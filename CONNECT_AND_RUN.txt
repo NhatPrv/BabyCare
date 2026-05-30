@@ -1,0 +1,18 @@
+# BabyCare connect & run
+
+# 1) Chạy backend server (backend sẽ tự bật model service ở cổng 8001)
+cd d:\MyDATA\SEMESTER6\Chuyende\Final\backend
+npm start
+
+# 2) Mở ngrok để điện thoại/bác sĩ vào cùng server
+ngrok http 4000
+
+# Ghi chú
+# - Không cần mở terminal riêng cho 8001 nữa.
+# - Nếu muốn tắt auto-start model service, set START_MODEL_SERVICE=0 trước khi chạy backend.
+
+# Link app điện thoại
+https://vigorous-strategy-jargon.ngrok-free.dev/
+
+# Link web bác sĩ
+https://vigorous-strategy-jargon.ngrok-free.dev/doctor

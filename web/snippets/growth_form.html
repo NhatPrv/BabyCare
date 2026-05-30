@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Growth Assessment Form</title>
+</head>
+<body>
+  <h3>Assess Child Growth</h3>
+  <form id="growthForm">
+    <label>Sex: <input name="sex" value="female" /></label><br/>
+    <label>Age (months): <input name="age_months" type="number" step="0.1" /></label><br/>
+    <label>Weight (kg): <input name="weight_kg" type="number" step="0.1" /></label><br/>
+    <label>Height (cm): <input name="height_cm" type="number" step="0.1" /></label><br/>
+    <button type="submit">Assess</button>
+  </form>
+
+  <pre id="out"></pre>
+
+  <script>
+    const form = document.getElementById('growthForm');
+    const out = document.getElementById('out');
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const data = Object.fromEntries(new FormData(form).entries());
+      // convert numeric fields
+      ['age_months','weight_kg','height_cm'].forEach(k => { if (data[k]) data[k] = Number(data[k]); });
+
+      try {
+        const res = await fetch('/api/growth/assess', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const json = await res.json();
+        out.textContent = JSON.stringify(json, null, 2);
+      } catch (err) {
+        out.textContent = 'Error: ' + err.message;
+      }
+    });
+  </script>
+</body>
+</html>
