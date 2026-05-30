@@ -102,6 +102,45 @@ data class GrowthAssessmentResponse(
     val model_result: JsonElement? = null
 )
 
+@Serializable
+data class ChildMeasurementDto(
+    val id: String,
+    @SerialName("childId") val childId: String? = null,
+    @SerialName("measuredAt") val measuredAt: String = "",
+    @SerialName("measuredAtKey") val measuredAtKey: String = "",
+    val weight: Double? = null,
+    val height: Double? = null,
+    @SerialName("headCircumference") val headCircumference: Double? = null,
+    val note: String? = null,
+    @SerialName("createdAt") val createdAt: String = "",
+    val assessment: GrowthAssessmentRecordDto? = null
+)
+
+@Serializable
+data class GrowthAssessmentRecordDto(
+    val id: String,
+    @SerialName("childId") val childId: String? = null,
+    @SerialName("measurementId") val measurementId: String? = null,
+    @SerialName("modelVersion") val modelVersion: String? = null,
+    val bmi: Double? = null,
+    @SerialName("weightForAgeZ") val weightForAgeZ: Double? = null,
+    @SerialName("heightForAgeZ") val heightForAgeZ: Double? = null,
+    @SerialName("bmiForAgeZ") val bmiForAgeZ: Double? = null,
+    val classification: String? = null,
+    @SerialName("riskLevel") val riskLevel: String? = null,
+    val summary: String? = null,
+    val recommendations: JsonElement? = null,
+    val recommendation: String? = null,
+    @SerialName("createdAt") val createdAt: String = ""
+)
+
+@Serializable
+data class ChildProfileResponse(
+    val child: Baby,
+    @SerialName("latestAssessment") val latestAssessment: GrowthAssessmentRecordDto? = null,
+    @SerialName("measurementHistory") val measurementHistory: List<ChildMeasurementDto> = emptyList()
+)
+
 interface ApiService {
     @POST("auth/login")
     suspend fun login(@Body request: AuthRequest): AuthResponse
@@ -126,6 +165,12 @@ interface ApiService {
         @Header("Authorization") authorization: String,
         @Path("childId") childId: String
     ): Baby
+
+    @GET("children/{childId}/profile")
+    suspend fun getChildProfile(
+        @Header("Authorization") authorization: String,
+        @Path("childId") childId: String
+    ): ChildProfileResponse
 
     @POST("children")
     suspend fun createChild(

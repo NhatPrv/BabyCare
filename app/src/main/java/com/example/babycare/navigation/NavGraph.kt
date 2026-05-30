@@ -102,7 +102,6 @@ fun SetupNavGraph(navController: NavHostController) {
                 viewModel = babyViewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToHome = { navController.navigate(Screen.Home.route) },
-                onOpenChild = { childId -> navController.navigate(Screen.BabyInfoEdit.createRoute(childId)) },
                 onAddChild = { navController.navigate(Screen.BabyInfoNew.route) }
             )
         }

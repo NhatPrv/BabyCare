@@ -10,6 +10,7 @@ import com.example.babycare.data.remote.AuthRequest
 import com.example.babycare.data.remote.ChatMessageDto
 import com.example.babycare.data.remote.ChatSessionDto
 import com.example.babycare.data.remote.ChildUpsertRequest
+import com.example.babycare.data.remote.ChildProfileResponse
 import com.example.babycare.data.remote.CreateChatSessionRequest
 import com.example.babycare.data.remote.GrowthAssessmentRequest
 import com.example.babycare.data.remote.GrowthAssessmentResponse
@@ -41,6 +42,9 @@ class BabyViewModel : ViewModel() {
 
     private val _selectedChildId = MutableStateFlow<String?>(null)
     val selectedChildId: StateFlow<String?> = _selectedChildId.asStateFlow()
+
+    private val _childProfile = MutableStateFlow<ChildProfileResponse?>(null)
+    val childProfile: StateFlow<ChildProfileResponse?> = _childProfile.asStateFlow()
 
     private val _growthAssessment = MutableStateFlow<GrowthAssessmentResponse?>(null)
     val growthAssessment: StateFlow<GrowthAssessmentResponse?> = _growthAssessment.asStateFlow()
@@ -90,7 +94,15 @@ class BabyViewModel : ViewModel() {
                     null -> children.firstOrNull()
                     else -> children.firstOrNull { it.id == selectedId } ?: children.firstOrNull()
                 }
-                _babyState.value = selectedChild
+                if (selectedChild?.id != null) {
+                    _selectedChildId.value = selectedChild.id
+                    val profile = apiService.getChildProfile(authorization, selectedChild.id)
+                    _babyState.value = profile.child
+                    _childProfile.value = profile
+                } else {
+                    _babyState.value = null
+                    _childProfile.value = null
+                }
                 
                 val appts = apiService.getAppointments(authorization)
                 _appointments.value = appts
@@ -113,6 +125,7 @@ class BabyViewModel : ViewModel() {
 
     fun updateBabyInfo(baby: Baby, onSuccess: () -> Unit = {}) {
         val authorization = authHeader()
+        val isEdit = authorization != null && !_selectedChildId.value.isNullOrBlank()
         _isLoading.value = true
         viewModelScope.launch {
             try {
@@ -145,8 +158,10 @@ class BabyViewModel : ViewModel() {
                 _selectedChildId.value = saved.id
                 _babyState.value = saved
 
-                // Automatically run growth assessment whenever baby info is updated
-                assessGrowth(saved)
+                if (isEdit) {
+                    // Automatically run growth assessment whenever an existing child's info changes.
+                    assessGrowth(saved)
+                }
 
                 // Refresh other data (appointments, schedule) if authorized
                 if (authorization != null) fetchDataFromServer()
@@ -247,6 +262,10 @@ class BabyViewModel : ViewModel() {
     }
 
     fun loadChildForEdit(childId: String?) {
+        selectChild(childId)
+    }
+
+    fun selectChild(childId: String?) {
         val authorization = authHeader() ?: return
         viewModelScope.launch {
             try {
@@ -254,11 +273,13 @@ class BabyViewModel : ViewModel() {
                 if (childId.isNullOrBlank()) {
                     _selectedChildId.value = null
                     _babyState.value = null
+                    _childProfile.value = null
                     return@launch
                 }
-                val child = apiService.getChildById(authorization, childId)
-                _selectedChildId.value = child.id
-                _babyState.value = child
+                _selectedChildId.value = childId
+                val profile = apiService.getChildProfile(authorization, childId)
+                _babyState.value = profile.child
+                _childProfile.value = profile
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _error.value = "Không thể tải thông tin bé: ${e.message}"
@@ -269,6 +290,7 @@ class BabyViewModel : ViewModel() {
     fun clearSelectedChild() {
         _selectedChildId.value = null
         _babyState.value = null
+        _childProfile.value = null
         _growthAssessment.value = null
     }
 

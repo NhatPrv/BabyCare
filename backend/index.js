@@ -325,6 +325,14 @@ async function ensureAllTables() {
     recommendations JSONB,
     created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
   )`);
+  await pool.query('ALTER TABLE growth_assessments ADD COLUMN IF NOT EXISTS measurement_id UUID');
+  await pool.query('ALTER TABLE growth_assessments ADD COLUMN IF NOT EXISTS weight_for_age_z DOUBLE PRECISION');
+  await pool.query('ALTER TABLE growth_assessments ADD COLUMN IF NOT EXISTS height_for_age_z DOUBLE PRECISION');
+  await pool.query('ALTER TABLE growth_assessments ADD COLUMN IF NOT EXISTS bmi_for_age_z DOUBLE PRECISION');
+  await pool.query('ALTER TABLE growth_assessments ADD COLUMN IF NOT EXISTS risk_level VARCHAR(30)');
+  await pool.query('ALTER TABLE growth_assessments ADD COLUMN IF NOT EXISTS summary TEXT');
+  await pool.query('ALTER TABLE growth_assessments ADD COLUMN IF NOT EXISTS recommendations JSONB');
+  await pool.query('ALTER TABLE growth_assessments ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()');
   await pool.query('CREATE INDEX IF NOT EXISTS idx_growth_assessments_child_id ON growth_assessments(child_id)');
 
   await pool.query(`CREATE TABLE IF NOT EXISTS vaccine_ai_alerts (
@@ -373,6 +381,15 @@ function formatDateForApp(value) {
   return `${day}/${month}/${date.getFullYear()}`;
 }
 
+function formatDateKey(value) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 function toBabyResponse(row) {
   if (!row) return { name: "", dob: "", weight: 0, height: 0, gender: "Nam" };
   const genderForApp = row.gender === 'Nu' ? 'Nữ' : (row.gender === 'Khac' ? 'Khác' : row.gender || 'Nam');
@@ -419,12 +436,126 @@ function toChildResponse(row) {
   };
 }
 
+function toAssessmentResponse(row) {
+  if (!row) return null;
+  let recommendations = row.recommendations ?? null;
+  if (typeof recommendations === 'string') {
+    try {
+      recommendations = JSON.parse(recommendations);
+    } catch (_) {
+      recommendations = { raw: recommendations };
+    }
+  }
+  return {
+    id: row.id,
+    childId: row.child_id || null,
+    measurementId: row.measurement_id || null,
+    modelVersion: row.model_version || null,
+    bmi: row.bmi != null ? Number(row.bmi) : null,
+    weightForAgeZ: row.weight_for_age_z != null ? Number(row.weight_for_age_z) : null,
+    heightForAgeZ: row.height_for_age_z != null ? Number(row.height_for_age_z) : null,
+    bmiForAgeZ: row.bmi_for_age_z != null ? Number(row.bmi_for_age_z) : null,
+    classification: row.classification || null,
+    riskLevel: row.risk_level || null,
+    summary: row.summary || null,
+    recommendations,
+    recommendation: recommendations && typeof recommendations === 'object'
+      ? (recommendations.recommendation || null)
+      : null,
+    createdAt: formatDateForApp(row.created_at)
+  };
+}
+
+function toMeasurementHistoryResponse(row) {
+  if (!row) return null;
+  const assessment = row.assessment_id ? toAssessmentResponse({
+    id: row.assessment_id,
+    child_id: row.child_id,
+    measurement_id: row.id,
+    model_version: row.assessment_model_version,
+    bmi: row.assessment_bmi,
+    weight_for_age_z: row.assessment_weight_for_age_z,
+    height_for_age_z: row.assessment_height_for_age_z,
+    bmi_for_age_z: row.assessment_bmi_for_age_z,
+    classification: row.assessment_classification,
+    risk_level: row.assessment_risk_level,
+    summary: row.assessment_summary,
+    recommendations: row.assessment_recommendations,
+    created_at: row.assessment_created_at
+  }) : null;
+
+  return {
+    id: row.id,
+    childId: row.child_id,
+    measuredAt: formatDateForApp(row.measured_at),
+    measuredAtKey: formatDateKey(row.measured_at),
+    weight: row.weight != null ? Number(row.weight) : null,
+    height: row.height != null ? Number(row.height) : null,
+    headCircumference: row.head_circumference != null ? Number(row.head_circumference) : null,
+    note: row.note || null,
+    createdAt: formatDateForApp(row.created_at),
+    assessment
+  };
+}
+
 async function getChildrenByParent(parentId) {
   const result = await pool.query(
     'SELECT * FROM children WHERE parent_id = $1 ORDER BY created_at ASC',
     [parentId]
   );
   return result.rows;
+}
+
+async function getChildProfileByParent(parentId, childId) {
+  const childResult = await pool.query(
+    'SELECT * FROM children WHERE id = $1 AND parent_id = $2 LIMIT 1',
+    [childId, parentId]
+  );
+  const child = childResult.rows[0] || null;
+  if (!child) return null;
+
+  const latestAssessmentResult = await pool.query(
+    `SELECT *
+     FROM growth_assessments
+     WHERE child_id = $1
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [childId]
+  );
+
+  const measurementResult = await pool.query(
+    `SELECT
+        cm.id,
+        cm.child_id,
+        cm.measured_at,
+        cm.weight,
+        cm.height,
+        cm.head_circumference,
+        cm.note,
+        cm.created_at,
+        ga.id AS assessment_id,
+        ga.model_version AS assessment_model_version,
+        ga.bmi AS assessment_bmi,
+        ga.weight_for_age_z AS assessment_weight_for_age_z,
+        ga.height_for_age_z AS assessment_height_for_age_z,
+        ga.bmi_for_age_z AS assessment_bmi_for_age_z,
+        ga.classification AS assessment_classification,
+        ga.risk_level AS assessment_risk_level,
+        ga.summary AS assessment_summary,
+        ga.recommendations AS assessment_recommendations,
+        ga.created_at AS assessment_created_at
+     FROM child_measurements cm
+     LEFT JOIN growth_assessments ga ON ga.measurement_id = cm.id
+     WHERE cm.child_id = $1
+     ORDER BY cm.measured_at ASC, cm.created_at ASC`,
+    [childId]
+  );
+
+  return {
+    child: toChildResponse(child),
+    latestAssessment: toAssessmentResponse(latestAssessmentResult.rows[0] || null),
+    measurementHistory: measurementResult.rows.map(toMeasurementHistoryResponse)
+  };
 }
 
 function normalizeChildGender(gender) {
@@ -601,6 +732,21 @@ app.get('/children/:childId', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error fetching child:', err);
     res.status(500).json({ error: 'Failed to fetch child' });
+  }
+});
+
+app.get('/children/:childId/profile', authenticateToken, async (req, res) => {
+  try {
+    const parent = await getCurrentParent(req.user.username);
+    if (!parent) return res.status(404).json({ error: 'Parent not found' });
+
+    const profile = await getChildProfileByParent(parent.id, req.params.childId);
+    if (!profile) return res.status(404).json({ error: 'Child not found' });
+
+    res.json(profile);
+  } catch (err) {
+    console.error('Error fetching child profile:', err);
+    res.status(500).json({ error: 'Failed to fetch child profile' });
   }
 });
 
@@ -852,15 +998,55 @@ app.post('/api/growth/assess', authenticateToken, async (req, res) => {
       });
     }
 
+    const measurementResult = await pool.query(
+      `INSERT INTO child_measurements (child_id, measured_at, weight, height, head_circumference, note)
+       VALUES ($1, CURRENT_DATE, $2, $3, $4, $5)
+       RETURNING *`,
+      [
+        child.id,
+        payload.weight_kg ?? null,
+        payload.height_cm ?? null,
+        payload.head_circumference_cm ?? null,
+        JSON.stringify({ source: 'growth_assessment', request: payload })
+      ]
+    );
+    const measurement = measurementResult.rows[0];
+
     const insertResult = await pool.query(
-      `INSERT INTO growth_assessments (child_id, model_version, bmi, classification, summary, recommendations)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [child ? child.id : null, modelVersion, bmi, classification, JSON.stringify({ request: payload, result }), JSON.stringify({ recommendation: result.recommendation || null, probabilities: result.probabilities || {} })]
+      `INSERT INTO growth_assessments (
+         child_id,
+         measurement_id,
+         model_version,
+         bmi,
+         weight_for_age_z,
+         height_for_age_z,
+         bmi_for_age_z,
+         classification,
+         risk_level,
+         summary,
+         recommendations
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING *`,
+      [
+        child.id,
+        measurement.id,
+        modelVersion,
+        bmi,
+        result.weight_for_age_z ?? null,
+        result.height_for_age_z ?? null,
+        result.bmi_for_age_z ?? null,
+        classification,
+        result.risk_level || classification,
+        JSON.stringify({ request: payload, result }),
+        JSON.stringify({ recommendation: result.recommendation || null, probabilities: result.probabilities || {} })
+      ]
     );
 
     res.json({
       success: true,
       assessment: insertResult.rows[0],
+      measurement,
       model_result: result,
       prediction: result.prediction || result.predicted || null,
       top_probability: result.top_probability || null,
