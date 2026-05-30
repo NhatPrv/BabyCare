@@ -24,7 +24,8 @@ backend/node_modules/
 /Clean
 /models/
 /ml/data/
-/ml/models/*.joblib
-/ml/models/lgbm_runs/
+/ml/forms/
+/ml/models/
+/ml/reports/
 __pycache__/
 *.pyc
