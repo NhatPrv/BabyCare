@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: babycare-db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: your_secure_db_password
+      POSTGRES_DB: babycare
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: babycare-app
+    restart: always
+    ports:
+      - "4000:4000"
+    environment:
+      - PORT=4000
+      - DATABASE_URL=postgres://postgres:your_secure_db_password@db:5432/babycare
+      - GEMINI_API_KEY=AIzaSyAcJS3FtLve7RWxTB9XM-PKZuDO0EBGxnQ
+      - GEMINI_MODEL=gemini-3.1-flash-lite
+      - JWT_SECRET=your_secure_jwt_secret_key
+      - START_MODEL_SERVICE=1
+      - MODEL_SERVICE_PORT=8001
+      - PYTHON_BIN=/app/.venv/bin/python
+    depends_on:
+      - db
+
+volumes:
+  postgres_data:

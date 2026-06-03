@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
@@ -225,14 +226,40 @@ fun BookingScreen(
             SectionHeader(number = "1.", title = "Chọn bé")
             Spacer(modifier = Modifier.height(12.dp))
             if (children.isNotEmpty()) {
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.fillMaxWidth()) {
-                    children.forEach { child ->
-                        BookingChildCard(
-                            child = child,
-                            selected = selectedChildId == child.id,
-                            modifier = Modifier.weight(1f),
-                            onClick = { selectedChildId = child.id }
-                        )
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp)
+                ) {
+                    items(children) { child ->
+                        val isBoy = child.gender.trim().lowercase() in setOf("nam", "male", "boy", "m")
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.clickable { selectedChildId = child.id }
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(CircleShape)
+                                    .background(if (selectedChildId == child.id) PrimaryBlue.copy(alpha = 0.1f) else Color.Transparent)
+                                    .border(if (selectedChildId == child.id) 2.dp else 0.dp, PrimaryBlue, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                androidx.compose.foundation.Image(
+                                    painter = painterResource(id = if (isBoy) R.drawable.avatar_boy else R.drawable.avatar_girl),
+                                    contentDescription = child.name,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize().clip(CircleShape)
+                                )
+                            }
+                            Text(
+                                text = child.name,
+                                fontSize = 12.sp,
+                                fontWeight = if (selectedChildId == child.id) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selectedChildId == child.id) PrimaryBlue else TextSecondary,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
                     }
                 }
             } else {

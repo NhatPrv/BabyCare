@@ -77,7 +77,8 @@ fun ProfileScreen(
     onLogout: () -> Unit,
     onNavigateToChildren: () -> Unit,
     onNavigateToAppointments: () -> Unit,
-    onNavigateToVaccinations: () -> Unit
+    onNavigateToVaccinations: () -> Unit,
+    onNavigateToChatbot: () -> Unit
 ) {
     val baby by viewModel.babyState.collectAsStateWithLifecycle()
     val parentStats by viewModel.parentStats.collectAsStateWithLifecycle()
@@ -138,7 +139,8 @@ fun ProfileScreen(
                 TextButton(onClick = { showEditDialog = false }) {
                     Text("Hủy")
                 }
-            }
+            },
+            containerColor = Color.White
         )
     }
 
@@ -281,7 +283,8 @@ fun ProfileScreen(
             ProfileMenuCard(
                 title = "BabyCare AI",
                 subtitle = "Quản lý trợ lý thông minh",
-                icon = Icons.Default.SmartToy
+                icon = Icons.Default.SmartToy,
+                onClick = onNavigateToChatbot
             )
             ProfileMenuCard(
                 title = "Quyền riêng tư & bảo mật",

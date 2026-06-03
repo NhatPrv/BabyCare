@@ -5,6 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,6 +33,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Edit
@@ -78,6 +82,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.babycare.R
 import com.example.babycare.data.model.Baby
+import com.example.babycare.data.model.VaccinationStatus
 import com.example.babycare.data.remote.ChildProfileResponse
 import com.example.babycare.data.remote.ChildMeasurementDto
 import com.example.babycare.data.remote.GrowthAssessmentRecordDto
@@ -99,6 +104,9 @@ fun MyChildrenScreen(
     viewModel: BabyViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToHome: () -> Unit,
+    onNavigateToBooking: () -> Unit,
+    onNavigateToVaccinations: (String) -> Unit,
+    onNavigateToAppointments: () -> Unit,
     onAddChild: () -> Unit
 ) {
     val scrollState = rememberScrollState()
@@ -107,9 +115,11 @@ fun MyChildrenScreen(
     val selectedProfile by viewModel.childProfile.collectAsStateWithLifecycle()
     val selectedChildId by viewModel.selectedChildId.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val vaccineSchedule by viewModel.vaccineSchedule.collectAsStateWithLifecycle()
 
     var isEditing by remember { mutableStateOf(false) }
     var showConfirmDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var draftName by remember(selectedBaby?.id) { mutableStateOf(selectedBaby?.name ?: "") }
     var draftDob by remember(selectedBaby?.id) { mutableStateOf(selectedBaby?.dob ?: "") }
     var draftWeight by remember(selectedBaby?.id) { mutableStateOf(selectedBaby?.weight?.toString() ?: "") }
@@ -148,7 +158,7 @@ fun MyChildrenScreen(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("Hồ sơ các bé", fontWeight = FontWeight.Bold, color = TextDark) },
+                title = { Text("Con cái", fontWeight = FontWeight.Bold, color = TextDark) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -220,7 +230,7 @@ fun MyChildrenScreen(
                     onWeightChange = { draftWeight = it },
                     onHeightChange = { draftHeight = it },
                     onGenderChange = { draftGender = it },
-                    onBook = onNavigateToHome,
+                    onBook = onNavigateToBooking,
                     onStartEdit = {
                         isEditing = true
                         draftName = currentChild.name
@@ -243,6 +253,27 @@ fun MyChildrenScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                val completedVaccinesCount = remember(vaccineSchedule) {
+                    vaccineSchedule.count { it.status == VaccinationStatus.COMPLETED }
+                }
+                val overdueVaccinesCount = remember(vaccineSchedule) {
+                    vaccineSchedule.count { it.status == VaccinationStatus.OVERDUE }
+                }
+                val upcomingVaccinesCount = remember(vaccineSchedule) {
+                    vaccineSchedule.count { it.status == VaccinationStatus.UPCOMING }
+                }
+
+                StatisticsCard(
+                    completedVaccinesCount = completedVaccinesCount,
+                    overdueVaccinesCount = overdueVaccinesCount,
+                    upcomingVaccinesCount = upcomingVaccinesCount,
+                    onCompletedClick = { onNavigateToVaccinations("Đã tiêm") },
+                    onOverdueClick = { onNavigateToVaccinations("Bị trễ") },
+                    onUpcomingClick = { onNavigateToVaccinations("Chưa tới") }
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 AssessmentCard(
                     assessment = currentAssessment,
                     ui = assessmentUi
@@ -256,7 +287,22 @@ fun MyChildrenScreen(
                     history = measurementHistory
                 )
 
-                
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Button(
+                    onClick = { showDeleteConfirmDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                    shape = RoundedCornerShape(18.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, tint = Color.White)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Xóa hồ sơ bé", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }
@@ -291,6 +337,35 @@ fun MyChildrenScreen(
                     Text("Hủy")
                 }
             }
+        )
+    }
+
+    if (showDeleteConfirmDialog && currentChild != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = { Text("Xác nhận xóa hồ sơ") },
+            text = { Text("Bạn có chắc chắn muốn xóa vĩnh viễn hồ sơ của bé ${currentChild.name} không? Thao tác này không thể hoàn tác.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirmDialog = false
+                        viewModel.deleteChild(currentChild.id.orEmpty(), onSuccess = {
+                            isEditing = false
+                        })
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = ErrorRed)
+                ) {
+                    Text("Xóa", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteConfirmDialog = false }
+                ) {
+                    Text("Hủy", color = TextSecondary)
+                }
+            },
+            containerColor = Color.White
         )
     }
 }
@@ -545,10 +620,15 @@ private fun ClassificationHistoryCard(
                     val spacing = 8.dp
                     val columnWidth = (availableWidth - (spacing * 4)) / 5
 
+                    val scrollState = rememberScrollState()
+                    LaunchedEffect(scrollState.maxValue) {
+                        scrollState.scrollTo(scrollState.maxValue)
+                    }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
+                            .horizontalScroll(scrollState),
                         horizontalArrangement = Arrangement.spacedBy(spacing)
                     ) {
                         history.forEach { m ->
@@ -568,7 +648,7 @@ private fun ClassificationHistoryCard(
                                 ) {}
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = m.measuredAtKey.ifBlank { m.measuredAt },
+                                    text = formatShortDate(m.measuredAtKey.ifBlank { m.measuredAt }),
                                     color = TextSecondary,
                                     fontSize = 12.sp,
                                     maxLines = 1
@@ -597,36 +677,38 @@ private fun ClassificationHistoryCard(
             },
             confirmButton = {
                 TextButton(onClick = { selected = null }) { Text("Đóng") }
-            }
+            },
+            containerColor = Color.White
         )
     }
 }
 
 private fun classificationToVietnamese(raw: String?): String {
     return when (raw?.trim()?.lowercase()) {
-        "normal" -> "Sức khỏe tốt"
-        "overweight" -> "Nguy cơ thừa cân"
-        "obese" -> "Nguy cơ béo phì"
-        "thin" -> "Nguy cơ suy dinh dưỡng"
-        "severe_thin" -> "Nguy cơ suy dinh dưỡng nặng"
+        "normal" -> "Khỏe mạnh"
+        "thin" -> "Thiếu cân"
+        "severe_thin" -> "Suy dinh dưỡng"
+        "overweight" -> "Thừa cân"
+        "obese" -> "Béo phì"
         else -> "Chưa rõ"
     }
 }
 
 private fun riskToVietnamese(raw: String?): String {
-    return when (raw?.trim()?.lowercase()) {
-        "low", "normal" -> "Thấp"
-        "medium" -> "Trung bình"
-        "high" -> "Cao"
-        else -> raw ?: "Chưa rõ"
+    val norm = raw?.trim()?.lowercase() ?: return "Chưa rõ"
+    return when (norm) {
+        "low", "normal" -> "Không có"
+        "medium", "thin", "overweight" -> "Đáng lo ngại"
+        "high", "severe_thin", "obese" -> "Nghiêm trọng"
+        else -> raw
     }
 }
 
 private fun classificationToColor(raw: String?): Color {
     return when (raw?.trim()?.lowercase()) {
         "normal" -> SuccessGreen.copy(alpha = 0.9f)
-        "overweight", "obese" -> WarningOrange.copy(alpha = 0.9f)
-        "thin", "severe_thin" -> ErrorRed.copy(alpha = 0.9f)
+        "thin", "overweight" -> WarningOrange.copy(alpha = 0.9f)
+        "severe_thin", "obese" -> ErrorRed.copy(alpha = 0.9f)
         else -> Color(0xFFF1F5F9)
     }
 }
@@ -724,11 +806,34 @@ private fun LineChart(
         }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(series.first().label, color = TextSecondary, fontSize = 12.sp)
+            Text(formatShortDate(series.first().label), color = TextSecondary, fontSize = 12.sp)
             Text(String.format("%.1f", series.last().value), color = lineColor, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            Text(series.last().label, color = TextSecondary, fontSize = 12.sp)
+            Text(formatShortDate(series.last().label), color = TextSecondary, fontSize = 12.sp)
         }
     }
+}
+
+private fun formatShortDate(raw: String): String {
+    if (raw.contains("/")) {
+        val parts = raw.split("/")
+        if (parts.size == 3) {
+            val day = parts[0]
+            val month = parts[1]
+            val year = parts[2]
+            val shortYear = if (year.length == 4) year.substring(2) else year
+            return "$day/$month/$shortYear"
+        }
+    } else if (raw.contains("-")) {
+        val parts = raw.split("-")
+        if (parts.size == 3) {
+            val year = parts[0]
+            val month = parts[1]
+            val day = parts[2]
+            val shortYear = if (year.length == 4) year.substring(2) else year
+            return "$day/$month/$shortYear"
+        }
+    }
+    return raw
 }
 
 @Composable
@@ -846,20 +951,20 @@ private fun buildAssessmentUi(rawLabel: String?): AssessmentUi {
             icon = Icons.Default.WarningAmber
         )
         "obese" -> AssessmentUi(
-            title = "Bé có nguy cơ thừa cân/béo phì",
-            subtitle = "Cần điều chỉnh dinh dưỡng và hoạt động thể chất.",
-            color = WarningOrange,
-            icon = Icons.Default.WarningAmber
-        )
-        "thin" -> AssessmentUi(
-            title = "Bé có nguy cơ suy dinh dưỡng",
-            subtitle = "Hãy theo dõi dinh dưỡng và tăng trưởng của bé.",
+            title = "Bé bị béo phì",
+            subtitle = "Hãy gặp bác sĩ để được tư vấn ngay.",
             color = ErrorRed,
             icon = Icons.Default.WarningAmber
         )
+        "thin" -> AssessmentUi(
+            title = "Bé bị thiếu cân",
+            subtitle = "Hãy theo dõi dinh dưỡng và tăng trưởng của bé.",
+            color = WarningOrange,
+            icon = Icons.Default.WarningAmber
+        )
         "severe_thin" -> AssessmentUi(
-            title = "Bé có nguy cơ suy dinh dưỡng nặng",
-            subtitle = "Nên đưa bé đi khám để được đánh giá sớm.",
+            title = "Bé bị suy dinh dưỡng",
+            subtitle = "Hãy gặp bác sĩ để được tư vấn ngay.",
             color = ErrorRed,
             icon = Icons.Default.WarningAmber
         )
@@ -876,3 +981,150 @@ private fun isBoy(gender: String?): Boolean {
     val normalized = gender?.trim()?.lowercase() ?: return true
     return normalized in setOf("nam", "male", "boy", "m")
 }
+
+@Composable
+private fun StatisticsCard(
+    completedVaccinesCount: Int,
+    overdueVaccinesCount: Int,
+    upcomingVaccinesCount: Int,
+    onCompletedClick: () -> Unit,
+    onOverdueClick: () -> Unit,
+    onUpcomingClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text("Thống kê hành trình của bé", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TextDark)
+            Spacer(modifier = Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Đã tiêm
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onCompletedClick() },
+                    shape = RoundedCornerShape(20.dp),
+                    color = SuccessGreen.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.3f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(vertical = 14.dp, horizontal = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = completedVaccinesCount.toString(),
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SuccessGreen
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "ĐÃ TIÊM",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = SuccessGreen
+                        )
+                    }
+                }
+
+                // Bị trễ
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onOverdueClick() },
+                    shape = RoundedCornerShape(20.dp),
+                    color = ErrorRed.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, ErrorRed.copy(alpha = 0.3f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(vertical = 14.dp, horizontal = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = overdueVaccinesCount.toString(),
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ErrorRed
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "BỊ TRỄ",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ErrorRed
+                        )
+                    }
+                }
+
+                // Chưa tới
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onUpcomingClick() },
+                    shape = RoundedCornerShape(20.dp),
+                    color = WarningOrange.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, WarningOrange.copy(alpha = 0.3f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(vertical = 14.dp, horizontal = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = upcomingVaccinesCount.toString(),
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = WarningOrange
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "CHƯA TỚI",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = WarningOrange
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+fun parseAppointmentDate(dateStr: String, timeStr: String): Date {
+    val formats = listOf(
+        SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()),
+        SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault()),
+        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()),
+        SimpleDateFormat("EEE, dd MMM yyyy hh:mm a", Locale.getDefault()),
+        SimpleDateFormat("EEE, dd MMM yyyy hh:mm a", Locale.US),
+        SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()),
+        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    )
+    val combined = "$dateStr $timeStr".trim()
+    for (format in formats) {
+        try {
+            val parsed = format.parse(combined)
+            if (parsed != null) return parsed
+        } catch (_: Exception) {}
+    }
+    // Try parsing date only
+    val dateOnlyFormats = listOf(
+        SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()),
+        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    )
+    for (format in dateOnlyFormats) {
+        try {
+            val parsed = format.parse(dateStr)
+            if (parsed != null) return parsed
+        } catch (_: Exception) {}
+    }
+    return Date(Long.MAX_VALUE)
+}
+

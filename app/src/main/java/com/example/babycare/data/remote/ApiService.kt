@@ -218,6 +218,12 @@ interface ApiService {
         @Body request: ChildUpsertRequest
     ): Baby
 
+    @DELETE("children/{childId}")
+    suspend fun deleteChild(
+        @Header("Authorization") authorization: String,
+        @Path("childId") childId: String
+    )
+
     @GET("appointments")
     suspend fun getAppointments(@Header("Authorization") authorization: String): List<Appointment>
 

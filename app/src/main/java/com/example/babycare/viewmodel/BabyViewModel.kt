@@ -93,6 +93,9 @@ class BabyViewModel(application: Application) : AndroidViewModel(application) {
     private val _initialVaccineFilter = MutableStateFlow<String>("Tất cả")
     val initialVaccineFilter: StateFlow<String> = _initialVaccineFilter.asStateFlow()
 
+    private val _readNotificationIds = MutableStateFlow<Set<String>>(emptySet())
+    val readNotificationIds: StateFlow<Set<String>> = _readNotificationIds.asStateFlow()
+
     fun setInitialVaccineFilter(filter: String) {
         _initialVaccineFilter.value = filter
     }
@@ -103,6 +106,8 @@ class BabyViewModel(application: Application) : AndroidViewModel(application) {
             _authToken.value = savedToken
             fetchDataFromServer()
         }
+        val savedReadIds = sharedPrefs.getStringSet("read_notification_ids", emptySet()) ?: emptySet()
+        _readNotificationIds.value = savedReadIds
     }
 
     private fun authHeader(): String? = _authToken.value?.let { "Bearer $it" }
@@ -651,6 +656,43 @@ class BabyViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         _aiSuggestions.value = suggestions
+    }
+
+    fun deleteChild(childId: String, onSuccess: () -> Unit = {}) {
+        val authorization = authHeader() ?: return
+        _isLoading.value = true
+        _error.value = null
+        viewModelScope.launch {
+            try {
+                apiService.deleteChild(authorization, childId)
+                if (_selectedChildId.value == childId) {
+                    clearSelectedChild()
+                }
+                fetchDataFromServer()
+                onSuccess()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _error.value = "Lỗi khi xóa hồ sơ bé: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun markNotificationAsRead(id: String) {
+        val current = _readNotificationIds.value.toMutableSet()
+        if (current.add(id)) {
+            _readNotificationIds.value = current
+            sharedPrefs.edit().putStringSet("read_notification_ids", current).apply()
+        }
+    }
+
+    fun markAllNotificationsAsRead(ids: List<String>) {
+        val current = _readNotificationIds.value.toMutableSet()
+        if (current.addAll(ids)) {
+            _readNotificationIds.value = current
+            sharedPrefs.edit().putStringSet("read_notification_ids", current).apply()
+        }
     }
 
     fun clearError() {

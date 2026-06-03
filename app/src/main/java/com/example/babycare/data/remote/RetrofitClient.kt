@@ -11,9 +11,9 @@ import java.util.concurrent.TimeUnit
 object RetrofitClient {
     // BASE_URL is read from BuildConfig so it can be overridden in local.properties
     // Put these lines into local.properties in project root to override:
-    // SERVER_BASE_URL=https://your-ngrok-id.ngrok-free.dev/
-    // DOCTOR_URL=https://your-ngrok-id.ngrok-free.dev/doctor
-    private val BASE_URL: String = BuildConfig.SERVER_BASE_URL
+    // SERVER_BASE_URL=http://13.211.69.38:4000/
+    // DOCTOR_URL=http://13.211.69.38:4000/doctor
+    private val BASE_URL: String = "http://13.211.69.38:4000/"
 
     private val json = Json {
         ignoreUnknownKeys = true

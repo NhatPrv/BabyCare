@@ -33,6 +33,14 @@ const MODEL_SERVICE_PORT = Number(process.env.MODEL_SERVICE_PORT || 8001);
 const MODEL_SERVICE_HEALTH_URL = `http://127.0.0.1:${MODEL_SERVICE_PORT}/health`;
 let modelServiceProcess = null;
 
+let sseClients = [];
+function notifyClientsOfUpdate() {
+  console.log(`[SSE] Notifying ${sseClients.length} clients of update...`);
+  sseClients.forEach(client => {
+    client.write('data: update\n\n');
+  });
+}
+
 function runLocalGrowthAssessment(payload) {
   const pythonExe = process.env.PYTHON_BIN || path.join(PROJECT_ROOT, '.venv', 'Scripts', 'python.exe');
   const assessorScript = path.join(PROJECT_ROOT, 'ml', 'src', 'assess_child.py');
@@ -389,9 +397,29 @@ async function ensureAllTables() {
   await pool.query('CREATE INDEX IF NOT EXISTS idx_chat_messages_session_id ON chat_messages(session_id)');
 }
 
-ensureAllTables()
-  .then(() => ensureModelServiceRunning())
-  .catch(err => console.error('Failed ensuring tables:', err));
+async function startApp() {
+  const maxRetries = 10;
+  let retries = 0;
+  while (retries < maxRetries) {
+    try {
+      await ensureAllTables();
+      console.log('Database tables verified/created successfully.');
+      await ensureModelServiceRunning();
+      break;
+    } catch (err) {
+      retries++;
+      console.error(`Failed ensuring tables (attempt ${retries}/${maxRetries}):`, err.message || err);
+      if (retries >= maxRetries) {
+        console.error('Max database connection retries reached. Exiting.');
+        process.exit(1);
+      }
+      console.log('Waiting 3 seconds before retrying database connection...');
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+  }
+}
+
+startApp();
 
 function formatDateForApp(value) {
   if (!value) return '';
@@ -1137,6 +1165,33 @@ app.put('/children/:childId', authenticateToken, async (req, res) => {
   }
 });
 
+app.delete('/children/:childId', authenticateToken, async (req, res) => {
+  try {
+    const parent = await getCurrentParent(req.user.username);
+    if (!parent) return res.status(404).json({ error: 'Parent not found' });
+
+    await pool.query('DELETE FROM appointments WHERE child_id = $1', [req.params.childId]);
+    await pool.query('DELETE FROM child_measurements WHERE child_id = $1', [req.params.childId]);
+    await pool.query('DELETE FROM growth_assessments WHERE child_id = $1', [req.params.childId]);
+    await pool.query('DELETE FROM vaccination_records WHERE child_id = $1', [req.params.childId]);
+    await pool.query('DELETE FROM vaccine_ai_alerts WHERE child_id = $1', [req.params.childId]);
+
+    const result = await pool.query(
+      'DELETE FROM children WHERE id = $1 AND parent_id = $2 RETURNING *',
+      [req.params.childId, parent.id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Child not found or unauthorized' });
+    }
+
+    res.json({ success: true, message: 'Child profile deleted successfully' });
+  } catch (err) {
+    console.error('Error deleting child:', err);
+    res.status(500).json({ error: 'Failed to delete child profile' });
+  }
+});
+
 // --- API LỊCH HẸN ---
 app.get('/appointments', authenticateToken, async (req, res) => {
   try {
@@ -1219,6 +1274,7 @@ app.post('/appointments', authenticateToken, async (req, res) => {
       }
     })();
 
+    notifyClientsOfUpdate();
     res.json(created);
   } catch (err) {
     console.error('Error creating appointment:', err);
@@ -1252,6 +1308,7 @@ app.post('/appointments/:id/cancel', authenticateToken, async (req, res) => {
       [req.params.id]
     );
 
+    notifyClientsOfUpdate();
     res.json({ success: true, message: 'Lịch hẹn đã được hủy thành công' });
   } catch (err) {
     console.error('Error cancelling appointment:', err);
@@ -1718,6 +1775,7 @@ app.post('/doctor/confirm', async (req, res) => {
     const validStatuses = ['Đã xác nhận', 'Từ chối', 'Đã hủy'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Invalid status' });
     await pool.query('UPDATE appointments SET status = $1, rejection_reason = $2 WHERE id = $3', [status, rejection_reason || null, id]);
+    notifyClientsOfUpdate();
     res.json({ success: true });
   } catch (err) {
     console.error('Error in doctor confirm:', err);
@@ -1770,11 +1828,30 @@ app.post('/admin/confirm-appointment', authenticateToken, async (req, res) => {
           }
         }
 
+        notifyClientsOfUpdate();
         res.json({ success: true });
     } catch (err) {
         console.error('Error updating appointment:', err);
         res.status(500).json({ error: 'Failed to update appointment' });
     }
+});
+
+// SSE Endpoint for real-time updates
+app.get('/admin/events', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive'
+  });
+  res.write('\n');
+  
+  sseClients.push(res);
+  console.log(`[SSE] Doctor client connected. Total clients: ${sseClients.length}`);
+  
+  req.on('close', () => {
+    sseClients = sseClients.filter(client => client !== res);
+    console.log(`[SSE] Doctor client disconnected. Total clients: ${sseClients.length}`);
+  });
 });
 
 // Admin API: return appointments JSON (admin UI removed for security)
@@ -2257,6 +2334,26 @@ app.get('/doctor', (req, res) => {
       }
     }
 
+    // Set up real-time Server-Sent Events (SSE)
+    let eventSource = null;
+    function setupRealtimeEvents() {
+      if (eventSource) {
+        eventSource.close();
+      }
+      eventSource = new EventSource('/admin/events');
+      eventSource.onmessage = async (event) => {
+        if (event.data === 'update' && token) {
+          console.log('[SSE] Received update event. Fetching new data...');
+          await fetchAppointments();
+        }
+      };
+      eventSource.onerror = (err) => {
+        console.warn('[SSE] Connection error, retrying in 5s...', err);
+        eventSource.close();
+        setTimeout(setupRealtimeEvents, 5000);
+      };
+    }
+
     // Check for saved session on page load
     window.addEventListener('load', async () => {
       const savedToken = localStorage.getItem('doctor_token');
@@ -2264,6 +2361,7 @@ app.get('/doctor', (req, res) => {
         token = savedToken;
         loginArea.classList.add('hidden');
         dashboardArea.classList.remove('hidden');
+        setupRealtimeEvents();
         await fetchAppointments();
       }
     });
@@ -2414,7 +2512,6 @@ app.get('/doctor', (req, res) => {
       // TAB 2: Lịch tiêm – Tiêm chủng đã xác nhận, chưa tiêm xong
       // ============================================================
       const vaccineAppts = appointmentsData.filter(a =>
-        a.serviceType && a.serviceType.includes('Tiêm chủng') &&
         a.status === 'Đã xác nhận'
       );
       const sortedVaccine = getSortedData(vaccineAppts, 'vaccine');
@@ -2424,9 +2521,12 @@ app.get('/doctor', (req, res) => {
 
       vaccineRows.innerHTML = '';
       if (vaccineTotal === 0) {
-        vaccineRows.innerHTML = '<tr><td colspan="8" class="muted">✅ Không có lịch tiêm nào đang chờ tiêm.</td></tr>';
+        vaccineRows.innerHTML = '<tr><td colspan="8" class="muted">✅ Không có lịch hẹn nào đang chờ xử lý.</td></tr>';
       } else {
         vaccinePageData.forEach(a => {
+          const isVaccine = a.serviceType && a.serviceType.includes('Tiêm chủng');
+          const okBtnText = isVaccine ? 'Đã tiêm' : 'Đã khám';
+          const confirmMsg = isVaccine ? 'Xác nhận ĐÃ TIÊM cho lịch này?' : 'Xác nhận ĐÃ KHÁM cho lịch này?';
           const tr = document.createElement('tr');
           tr.innerHTML =
             '<td><b>' + escapeHtml(a.childName) + '</b></td>' +
@@ -2437,7 +2537,7 @@ app.get('/doctor', (req, res) => {
             '<td>' + escapeHtml(a.parentPhone || 'N/A') + '</td>' +
             '<td style="max-width:160px;white-space:normal;color:#475569;">' + escapeHtml(a.note || '—') + '</td>' +
             '<td style="white-space:nowrap;">' +
-              '<button class="btn-ok" style="padding:6px 12px;font-size:12px;" onclick="updateAppointmentStatus(\\\'' + a.id + '\\\', \\\'Đã tiêm\\\', \\\'Xác nhận ĐÃ TIÊM cho lịch này?\\\')">Đã tiêm</button> ' +
+              '<button class="btn-ok" style="padding:6px 12px;font-size:12px;" onclick="updateAppointmentStatus(\\\'' + a.id + '\\\', \\\'Đã tiêm\\\', \\\'' + confirmMsg + '\\\')">' + okBtnText + '</button> ' +
               '<button class="btn-no" style="padding:6px 12px;font-size:12px;" onclick="openRejectModal(\\\'' + a.id + '\\\', \\\'Đã hủy\\\')">Hủy</button>' +
             '</td>';
           vaccineRows.appendChild(tr);
@@ -2503,6 +2603,7 @@ app.get('/doctor', (req, res) => {
         localStorage.setItem('doctor_token', token);
         loginArea.classList.add('hidden');
         dashboardArea.classList.remove('hidden');
+        setupRealtimeEvents();
         console.log('Loading appointments dashboard...');
         await fetchAppointments();
         console.log('Appointments loaded.');
@@ -2526,7 +2627,7 @@ app.get('/doctor', (req, res) => {
       await fetchAppointments();
     });
 
-    // Auto-refresh every 5 seconds when tab is active and logged in
+    // Auto-refresh every 30 seconds when tab is active and logged in (as fallback)
     setInterval(async () => {
       if (token && !document.hidden) {
         try {
@@ -2539,7 +2640,7 @@ app.get('/doctor', (req, res) => {
           console.error('Auto-refresh error:', e);
         }
       }
-    }, 5000);
+    }, 30000);
   </script>
 </body>
 </html>`);

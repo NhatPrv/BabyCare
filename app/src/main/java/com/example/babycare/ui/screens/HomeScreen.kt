@@ -49,7 +49,19 @@ fun HomeScreen(
     val baby by viewModel.babyState.collectAsStateWithLifecycle()
     val children by viewModel.childrenState.collectAsStateWithLifecycle()
     val appointments by viewModel.appointments.collectAsStateWithLifecycle()
+    val vaccineSchedule by viewModel.vaccineSchedule.collectAsStateWithLifecycle()
+    val readNotificationIds by viewModel.readNotificationIds.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
+
+    val newNotifications = remember(appointments, vaccineSchedule, readNotificationIds, children) {
+        val apptNotifs = appointmentsToNotifs(appointments, children)
+        val vaccineNotifs = vaccineScheduleToNotifs(vaccineSchedule)
+        (apptNotifs + vaccineNotifs)
+            .filter { !readNotificationIds.contains(it.id) }
+            .filter { isWithin24Hours(it.timestamp) }
+            .sortedByDescending { it.timestamp }
+    }
+
 
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(lifecycleOwner) {
@@ -340,27 +352,47 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Cập nhật gần đây", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextDark)
-                Text("Xem tất cả", color = PrimaryBlue, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("Thông báo mới", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextDark)
+                Text(
+                    text = "Xem tất cả",
+                    color = PrimaryBlue,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.clickable { onNavigateToNotifications() }
+                )
             }
 
             Column(
                 modifier = Modifier.padding(horizontal = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                val babyName = baby?.name ?: "Bé"
-                UpdateItem(
-                    title = "Nhắc nhở tiêm chủng",
-                    description = "$babyName sắp đến hạn tiêm mũi DTaP tiếp theo. Nhấn để xem chi tiết.",
-                    time = "2 giờ trước",
-                    icon = Icons.Default.Edit // Replace with syringe
-                )
-                UpdateItem(
-                    title = "Cập nhật tăng trưởng",
-                    description = "Đã đến lúc cập nhật cân nặng và chiều cao của $babyName cho tháng này.",
-                    time = "Hôm qua",
-                    icon = Icons.Default.MonitorWeight
-                )
+                if (newNotifications.isEmpty()) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color.White
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Không có thông báo chưa xem trong 24h qua.", color = TextSecondary, fontSize = 14.sp)
+                        }
+                    }
+                } else {
+                    newNotifications.forEach { notif ->
+                        UpdateItem(
+                            title = notif.title,
+                            description = notif.description,
+                            time = notif.time,
+                            icon = notif.icon,
+                            onClick = {
+                                viewModel.markNotificationAsRead(notif.id)
+                                onNavigateToNotifications()
+                            }
+                        )
+                    }
+                }
             }
 
             // Keep only a small breathing room at the end of the list.
@@ -424,9 +456,11 @@ fun QuickActionCard(modifier: Modifier, title: String, subtitle: String, icon: I
 }
 
 @Composable
-fun UpdateItem(title: String, description: String, time: String, icon: ImageVector) {
+fun UpdateItem(title: String, description: String, time: String, icon: ImageVector, onClick: () -> Unit) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
         shape = RoundedCornerShape(20.dp),
         color = Color.White
     ) {

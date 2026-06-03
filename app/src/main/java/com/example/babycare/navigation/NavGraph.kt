@@ -104,6 +104,14 @@ fun SetupNavGraph(navController: NavHostController) {
                 viewModel = babyViewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToHome = { navController.navigate(Screen.Home.route) },
+                onNavigateToBooking = { navController.navigate(Screen.Booking.route) },
+                onNavigateToVaccinations = { filter ->
+                    babyViewModel.setInitialVaccineFilter(filter)
+                    navController.navigate(Screen.Vaccination.route)
+                },
+                onNavigateToAppointments = {
+                    navController.navigate(Screen.UpcomingVaccines.route)
+                },
                 onAddChild = { navController.navigate(Screen.BabyInfoNew.route) }
             )
         }
@@ -126,6 +134,7 @@ fun SetupNavGraph(navController: NavHostController) {
         }
         composable(route = Screen.Notifications.route) {
             NotificationsScreen(
+                viewModel = babyViewModel,
                 onNavigateBack = { navController.popBackStack() }
             )
         }
@@ -146,6 +155,9 @@ fun SetupNavGraph(navController: NavHostController) {
                 },
                 onNavigateToVaccinations = {
                     navController.navigate(Screen.Vaccination.route)
+                },
+                onNavigateToChatbot = {
+                    navController.navigate(Screen.Chatbot.route)
                 }
             )
         }
