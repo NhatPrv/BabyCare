@@ -32,7 +32,7 @@ private val bottomNavItems = listOf(
     BottomNavItem(Screen.Home.route, "Trang chủ", Icons.Filled.Home),
     BottomNavItem(Screen.MyChildren.route, "Trẻ em", Icons.Filled.People),
     BottomNavItem(Screen.Chatbot.route, "Trợ lý AI", Icons.Filled.SmartToy),
-    BottomNavItem(Screen.Booking.route, "Lịch hẹn", Icons.Filled.DateRange),
+    BottomNavItem(Screen.Booking.route, "Hẹn lịch", Icons.Filled.DateRange),
     BottomNavItem(Screen.Profile.route, "Hồ sơ", Icons.Filled.Person),
 )
 

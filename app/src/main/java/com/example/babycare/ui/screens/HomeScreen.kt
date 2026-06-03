@@ -11,9 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,6 +29,11 @@ import com.example.babycare.viewmodel.BabyViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+
 @Composable
 fun HomeScreen(
     viewModel: BabyViewModel,
@@ -39,10 +42,76 @@ fun HomeScreen(
     onNavigateToBooking: () -> Unit,
     onNavigateToNotifications: () -> Unit,
     onNavigateToProfile: () -> Unit,
-    onNavigateToAssessment: () -> Unit
+    onNavigateToGeneralVaccines: () -> Unit,
+    onNavigateToUpcomingVaccines: () -> Unit,
+    onAddChild: () -> Unit
 ) {
     val baby by viewModel.babyState.collectAsStateWithLifecycle()
+    val children by viewModel.childrenState.collectAsStateWithLifecycle()
+    val appointments by viewModel.appointments.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            viewModel.fetchDataFromServer()
+            while (true) {
+                delay(5000)
+                viewModel.fetchDataFromServer()
+            }
+        }
+    }
+
+    // Find the closest upcoming vaccine appointment for this baby
+    val closestVaccineAppt = remember(appointments, baby) {
+        if (baby == null) null
+        else {
+            appointments
+                .filter { it.childId == baby!!.id }
+                .filter { it.serviceType.contains("Tiêm chủng", ignoreCase = true) }
+                .filter { it.status == "Chờ xác nhận" || it.status == "Đã xác nhận" }
+                .sortedBy { appt ->
+                    val formats = listOf(
+                        SimpleDateFormat("EEE, dd MMM yyyy hh:mm a", Locale.getDefault()),
+                        SimpleDateFormat("EEE, dd MMM yyyy hh:mm a", Locale.US),
+                        SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault()),
+                        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                    )
+                    val combined = "${appt.date} ${appt.time}"
+                    var parsedDate: Date? = null
+                    for (format in formats) {
+                        try {
+                            parsedDate = format.parse(combined)
+                            if (parsedDate != null) break
+                        } catch (_: Exception) {}
+                    }
+                    parsedDate ?: Date(Long.MAX_VALUE)
+                }
+                .firstOrNull()
+        }
+    }
+
+    val displayVaccineName = remember(closestVaccineAppt) {
+        if (closestVaccineAppt == null) {
+            "Chưa có lịch"
+        } else {
+            val serviceType = closestVaccineAppt.serviceType
+            val prefix = "Tiêm chủng ("
+            if (serviceType.startsWith(prefix) && serviceType.endsWith(")")) {
+                serviceType.substring(prefix.length, serviceType.length - 1)
+            } else {
+                serviceType.replace("Tiêm chủng", "").replace("(", "").replace(")", "").trim().takeIf { it.isNotEmpty() } ?: "Vắc-xin"
+            }
+        }
+    }
+
+    val displayVaccineTime = remember(closestVaccineAppt) {
+        if (closestVaccineAppt != null) {
+            "Ngày tiêm: ${closestVaccineAppt.date}"
+        } else {
+            "Đặt lịch ngay"
+        }
+    }
 
     // Get greeting text based on time of day
     val greeting = remember {
@@ -117,44 +186,83 @@ fun HomeScreen(
                     colors = CardDefaults.cardColors(containerColor = PrimaryBlue)
                 ) {
                     Column(modifier = Modifier.padding(20.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        var showBabyMenu by remember { mutableStateOf(false) }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { showBabyMenu = true }
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .background(Color.White.copy(alpha = 0.2f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.ChildCare, contentDescription = null, tint = Color.White)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .background(Color.White.copy(alpha = 0.2f), CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.ChildCare, contentDescription = null, tint = Color.White)
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column {
+                                        Text(baby!!.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                        Text(calculateBabyAge(baby!!.dob), color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp)
+                                    }
                                 }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(baby!!.name, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                                    Text(calculateBabyAge(baby!!.dob), color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp)
+                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = Color.White)
+                            }
+
+                            DropdownMenu(
+                                expanded = showBabyMenu,
+                                onDismissRequest = { showBabyMenu = false },
+                                modifier = Modifier.background(Color.White)
+                            ) {
+                                children.forEach { child ->
+                                    DropdownMenuItem(
+                                        text = { Text(child.name, fontWeight = FontWeight.SemiBold, color = TextDark) },
+                                        onClick = {
+                                            showBabyMenu = false
+                                            viewModel.selectChild(child.id)
+                                        }
+                                    )
                                 }
                             }
-                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = Color.White)
                         }
 
                         Spacer(modifier = Modifier.height(20.dp))
 
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             BabyStatusInfoCard(
-                                modifier = Modifier.weight(1f),
-                                title = "TIÊM KẾP TỚI",
-                                value = "Xem lịch tiêm",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        viewModel.setInitialVaccineFilter("Tất cả")
+                                        onNavigateToVaccination()
+                                    },
+                                title = "XEM LỊCH TIÊM",
+                                value = "Lịch sơ sinh",
                                 time = "Xem chi tiết",
                                 icon = Icons.Default.Edit
                             )
                             BabyStatusInfoCard(
-                                modifier = Modifier.weight(1f),
-                                title = "LỊCH HẸN TỚI",
-                                value = "Đặt lịch khám",
-                                time = "Đặt ngay",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable {
+                                        if (closestVaccineAppt == null) {
+                                            onNavigateToBooking()
+                                        } else {
+                                            onNavigateToUpcomingVaccines()
+                                        }
+                                    },
+                                title = "MŨI TIÊM TỚI",
+                                value = displayVaccineName,
+                                time = displayVaccineTime,
                                 icon = Icons.Default.CalendarToday
                             )
                         }
@@ -189,10 +297,10 @@ fun HomeScreen(
                     QuickActionCard(
                         modifier = Modifier.weight(1f),
                         title = "Tiêm chủng",
-                        subtitle = "Xem lịch tiêm",
+                        subtitle = "Danh sách mũi tiêm",
                         icon = Icons.Default.Security,
                         containerColor = Color.White,
-                        onClick = onNavigateToVaccination
+                        onClick = onNavigateToGeneralVaccines
                     )
                     QuickActionCard(
                         modifier = Modifier.weight(1f),
@@ -215,22 +323,13 @@ fun HomeScreen(
                     )
                     QuickActionCard(
                         modifier = Modifier.weight(1f),
-                        title = "Thêm bé",
+                        title = "Thêm hồ sơ bé",
                         subtitle = "Hồ sơ mới",
                         icon = Icons.Default.Add,
                         containerColor = Color.White,
-                        onClick = { /* TODO */ }
+                        onClick = onAddChild
                     )
                 }
-                Spacer(modifier = Modifier.height(16.dp))
-                QuickActionCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    title = "Đánh giá phát triển",
-                    subtitle = "Đánh giá nhanh",
-                    icon = Icons.Default.MonitorWeight,
-                    containerColor = Color.White,
-                    onClick = onNavigateToAssessment
-                )
             }
 
             // 4. Recent Updates
@@ -249,15 +348,16 @@ fun HomeScreen(
                 modifier = Modifier.padding(horizontal = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                val babyName = baby?.name ?: "Bé"
                 UpdateItem(
                     title = "Nhắc nhở tiêm chủng",
-                    description = "Long sắp đến hạn tiêm mũi DTaP trong 12 ngày nữa. Nhấn để xem chi tiết.",
+                    description = "$babyName sắp đến hạn tiêm mũi DTaP tiếp theo. Nhấn để xem chi tiết.",
                     time = "2 giờ trước",
                     icon = Icons.Default.Edit // Replace with syringe
                 )
                 UpdateItem(
                     title = "Cập nhật tăng trưởng",
-                    description = "Đã đến lúc cập nhật cân nặng và chiều cao của Long cho tháng này.",
+                    description = "Đã đến lúc cập nhật cân nặng và chiều cao của $babyName cho tháng này.",
                     time = "Hôm qua",
                     icon = Icons.Default.MonitorWeight
                 )
@@ -361,20 +461,29 @@ fun calculateBabyAge(dobString: String): String {
         val birthCalendar = Calendar.getInstance()
         birthCalendar.time = dob
 
-        var months = today.get(Calendar.MONTH) - birthCalendar.get(Calendar.MONTH)
         var years = today.get(Calendar.YEAR) - birthCalendar.get(Calendar.YEAR)
+        var months = today.get(Calendar.MONTH) - birthCalendar.get(Calendar.MONTH)
+        var days = today.get(Calendar.DAY_OF_MONTH) - birthCalendar.get(Calendar.DAY_OF_MONTH)
+
+        if (days < 0) {
+            months--
+            val prevMonth = (today.get(Calendar.MONTH) - 1 + 12) % 12
+            val tempCal = Calendar.getInstance().apply {
+                set(Calendar.MONTH, prevMonth)
+                set(Calendar.YEAR, today.get(Calendar.YEAR))
+            }
+            days += tempCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+        }
 
         if (months < 0) {
             years--
             months += 12
         }
 
-        val days = today.get(Calendar.DAY_OF_MONTH) - birthCalendar.get(Calendar.DAY_OF_MONTH)
-
         when {
             years > 0 -> "$years tuổi $months tháng"
-            months > 0 -> "$months tháng ${if (days >= 0) days else 0} ngày"
-            else -> "${if (days >= 0) days else 0} ngày tuổi"
+            months > 0 -> "$months tháng $days ngày"
+            else -> "$days ngày tuổi"
         }
     } catch (_: Exception) {
         "Không rõ tuổi"

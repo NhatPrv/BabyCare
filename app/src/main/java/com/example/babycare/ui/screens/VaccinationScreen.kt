@@ -1,7 +1,7 @@
 package com.example.babycare.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -17,13 +17,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.babycare.ui.theme.*
 import com.example.babycare.viewmodel.BabyViewModel
+import com.example.babycare.data.model.VaccineSchedule
 import com.example.babycare.data.model.VaccinationStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -32,11 +32,26 @@ fun VaccinationScreen(
     viewModel: BabyViewModel,
     onNavigateBack: () -> Unit
 ) {
-    var selectedAge by remember { mutableStateOf("Tất cả") }
-    val ages = listOf("Tất cả", "Sơ sinh", "2 tháng", "4 tháng", "6 tháng")
+    val initialFilter by viewModel.initialVaccineFilter.collectAsStateWithLifecycle()
+    var selectedFilter by remember { mutableStateOf("Tất cả") }
+    
+    LaunchedEffect(initialFilter) {
+        selectedFilter = initialFilter
+    }
+
+    val filters = listOf("Tất cả", "Đã tiêm", "Chưa tới", "Bị trễ")
     
     val vaccineSchedule by viewModel.vaccineSchedule.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+
+    val filteredSchedule = remember(vaccineSchedule, selectedFilter) {
+        when (selectedFilter) {
+            "Đã tiêm" -> vaccineSchedule.filter { it.status == VaccinationStatus.COMPLETED }
+            "Chưa tới" -> vaccineSchedule.filter { it.status == VaccinationStatus.UPCOMING }
+            "Bị trễ" -> vaccineSchedule.filter { it.status == VaccinationStatus.OVERDUE }
+            else -> vaccineSchedule
+        }
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -46,11 +61,6 @@ fun VaccinationScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { /* Add */ }) {
-                        Icon(Icons.Default.Add, contentDescription = "Add")
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.White)
@@ -114,24 +124,24 @@ fun VaccinationScreen(
                             Spacer(modifier = Modifier.height(20.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 StatBox(modifier = Modifier.weight(1f), count = completedCount.toString(), label = "ĐÃ TIÊM", color = SuccessGreen)
-                                StatBox(modifier = Modifier.weight(1f), count = dueCount.toString(), label = "QUÁ HẠN", color = PrimaryBlue)
-                                StatBox(modifier = Modifier.weight(1f), count = upcomingCount.toString(), label = "SẮP TỚI", color = WarningOrange)
+                                StatBox(modifier = Modifier.weight(1f), count = dueCount.toString(), label = "BỊ TRỄ", color = ErrorRed)
+                                StatBox(modifier = Modifier.weight(1f), count = upcomingCount.toString(), label = "CHƯA TỚI", color = WarningOrange)
                             }
                         }
                     }
                 }
 
-                // 2. Age Filter Chips
+                // 2. Status Filter Chips
                 item {
                     LazyRow(
                         modifier = Modifier.padding(vertical = 24.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(ages) { age ->
+                        items(filters) { filter ->
                             FilterChip(
-                                selected = selectedAge == age,
-                                onClick = { selectedAge = age },
-                                label = { Text(age) },
+                                selected = selectedFilter == filter,
+                                onClick = { selectedFilter = filter },
+                                label = { Text(filter) },
                                 shape = RoundedCornerShape(20.dp),
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = PrimaryBlue,
@@ -143,35 +153,31 @@ fun VaccinationScreen(
                     }
                 }
 
-                // 3. Vaccine Items from ViewModel
-                items(vaccineSchedule) { scheduleItem ->
-                    val statusColor = when (scheduleItem.status) {
-                        VaccinationStatus.COMPLETED -> SuccessGreen
-                        VaccinationStatus.OVERDUE -> ErrorRed
-                        VaccinationStatus.UPCOMING -> WarningOrange
+                // 3. Vaccine Items
+                if (filteredSchedule.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 40.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val emptyMessage = when (selectedFilter) {
+                                "Đã tiêm" -> "Chưa có mũi tiêm nào hoàn thành"
+                                "Chưa tới" -> "Không có mũi tiêm nào chưa tới tuổi"
+                                "Bị trễ" -> "Không có mũi tiêm nào bị trễ"
+                                else -> "Không có mũi tiêm nào"
+                            }
+                            Text(emptyMessage, fontSize = 14.sp, color = TextSecondary)
+                        }
                     }
-                    val statusText = when (scheduleItem.status) {
-                        VaccinationStatus.COMPLETED -> "ĐÃ TIÊM"
-                        VaccinationStatus.OVERDUE -> "QUÁ HẠN"
-                        VaccinationStatus.UPCOMING -> "SẮP TỚI"
-                    }
-                    
-                    if (scheduleItem.status == VaccinationStatus.COMPLETED) {
-                        VaccineItem(
-                            name = scheduleItem.vaccine.name,
-                            dose = "${scheduleItem.vaccine.monthAge} tháng tuổi",
-                            date = scheduleItem.dueDate,
-                            status = statusText,
-                            color = statusColor
-                        )
-                    } else {
-                        VaccineDetailCard(
-                            name = scheduleItem.vaccine.name,
-                            dose = "${scheduleItem.vaccine.monthAge} tháng tuổi",
-                            targetDate = scheduleItem.dueDate,
-                            status = statusText,
-                            statusColor = statusColor,
-                            onMarkDone = { viewModel.markVaccinationAsCompleted(scheduleItem.vaccine.id) }
+                } else {
+                    items(filteredSchedule) { scheduleItem ->
+                        VaccineCard(
+                            scheduleItem = scheduleItem,
+                            onToggleStatus = { isCompleted ->
+                                viewModel.toggleVaccinationStatus(scheduleItem.vaccine.id, isCompleted)
+                            }
                         )
                     }
                 }
@@ -198,106 +204,89 @@ fun StatBox(modifier: Modifier, count: String, label: String, color: Color) {
 }
 
 @Composable
-fun TimelineHeader(title: String, isCompleted: Boolean) {
-    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
-        Box(
-            modifier = Modifier
-                .size(24.dp)
-                .background(if (isCompleted) SuccessGreen else Color.White, CircleShape)
-                .border(2.dp, if (isCompleted) SuccessGreen else PrimaryBlue, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            if (isCompleted) Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-        }
-        Spacer(modifier = Modifier.width(16.dp))
-        Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TextDark)
+fun VaccineCard(
+    scheduleItem: VaccineSchedule,
+    onToggleStatus: (Boolean) -> Unit
+) {
+    val isCompleted = scheduleItem.status == VaccinationStatus.COMPLETED
+    val statusColor = when (scheduleItem.status) {
+        VaccinationStatus.COMPLETED -> SuccessGreen
+        VaccinationStatus.OVERDUE -> ErrorRed
+        VaccinationStatus.UPCOMING -> WarningOrange
     }
-}
-
-@Composable
-fun VaccineItem(name: String, dose: String, date: String, status: String, color: Color) {
-    Row(modifier = Modifier.padding(start = 12.dp)) {
-        // Connector line
-        Box(modifier = Modifier.width(2.dp).height(100.dp).background(PrimaryBlue.copy(alpha = 0.2f)))
-        
-        Card(
-            modifier = Modifier.padding(start = 28.dp, bottom = 16.dp).fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White)
-        ) {
-            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text(dose, color = TextSecondary, fontSize = 13.sp)
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Tiêm ngày: $date", color = TextSecondary, fontSize = 12.sp)
-                    }
-                }
-                Surface(color = color.copy(alpha = 0.1f), shape = RoundedCornerShape(4.dp)) {
-                    Text(status, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = color, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
+    val statusText = when (scheduleItem.status) {
+        VaccinationStatus.COMPLETED -> "Đã tiêm"
+        VaccinationStatus.OVERDUE -> "Chưa tiêm (Bị trễ)"
+        VaccinationStatus.UPCOMING -> "Chưa tiêm (Chưa đủ tháng)"
     }
-}
-
-@Composable
-fun VaccineDetailCard(name: String, dose: String, targetDate: String, status: String, statusColor: Color, onMarkDone: () -> Unit = {}) {
-    Row(modifier = Modifier.padding(start = 12.dp)) {
-        Box(modifier = Modifier.width(2.dp).height(240.dp).background(PrimaryBlue.copy(alpha = 0.2f)))
-        
-        Card(
-            modifier = Modifier.padding(start = 28.dp, bottom = 16.dp).fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White)
+    
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(name, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.weight(1f))
-                    Surface(color = SecondaryBlue, shape = RoundedCornerShape(4.dp)) {
-                        Text(status, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), color = statusColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = scheduleItem.vaccine.name,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = TextDark
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Độ tuổi khuyên dùng: ${scheduleItem.vaccine.monthAge} tháng tuổi",
+                    fontSize = 13.sp,
+                    color = TextSecondary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarToday,
+                        contentDescription = null,
+                        tint = PrimaryBlue,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Ngày dự kiến: ${scheduleItem.dueDate}",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
                 }
-                Text(dose, color = TextSecondary, fontSize = 13.sp)
-                
+                Spacer(modifier = Modifier.height(8.dp))
                 Surface(
-                    modifier = Modifier.padding(vertical = 12.dp).fillMaxWidth(),
-                    color = BackgroundLight,
+                    color = statusColor.copy(alpha = 0.1f),
                     shape = RoundedCornerShape(8.dp)
                 ) {
-                    Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.History, contentDescription = null, tint = PrimaryBlue, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Ngày dự kiến: $targetDate", fontSize = 13.sp)
-                    }
-                }
-                
-                Text("TÁC DỤNG PHỤ THƯỜNG GẶP", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = TextSecondary)
-                Text("Đau đỏ, sốt nhẹ, quấy khóc tại chỗ tiêm. Thường hết sau 1-2 ngày.", fontSize = 12.sp, color = TextSecondary)
-                
-                Spacer(modifier = Modifier.height(16.dp))
-                
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = onMarkDone,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Đã tiêm", fontSize = 14.sp)
-                    }
-                    IconButton(
-                        onClick = { /* TODO */ },
-                        modifier = Modifier.background(SecondaryBlue, RoundedCornerShape(12.dp))
-                    ) {
-                        Icon(Icons.Default.Notifications, contentDescription = null, tint = PrimaryBlue)
-                    }
+                    Text(
+                        text = statusText,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        color = statusColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
+            
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Checkbox(
+                checked = isCompleted,
+                onCheckedChange = { onToggleStatus(it) },
+                colors = CheckboxDefaults.colors(
+                    checkedColor = SuccessGreen,
+                    uncheckedColor = TextSecondary
+                ),
+                modifier = Modifier.size(24.dp)
+            )
         }
     }
 }

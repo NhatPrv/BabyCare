@@ -87,14 +87,16 @@ fun SetupNavGraph(navController: NavHostController) {
                 onNavigateToBooking = { navController.navigate(Screen.Booking.route) },
                 onNavigateToNotifications = { navController.navigate(Screen.Notifications.route) },
                 onNavigateToProfile = { navController.navigate(Screen.Profile.route) },
-                onNavigateToAssessment = {
-                    val firstChild = babyViewModel.childrenState.value.firstOrNull()
-                    firstChild?.id?.let { id ->
-                        navController.navigate(Screen.BabyInfoEdit.createRoute(id))
-                    } ?: run {
-                        navController.navigate(Screen.BabyInfoNew.route)
-                    }
-                }
+                onNavigateToGeneralVaccines = { navController.navigate(Screen.GeneralVaccines.route) },
+                onNavigateToUpcomingVaccines = { navController.navigate(Screen.UpcomingVaccines.route) },
+                onAddChild = { navController.navigate(Screen.BabyInfoNew.route) }
+            )
+        }
+        composable(route = Screen.UpcomingVaccines.route) {
+            UpcomingVaccinesScreen(
+                viewModel = babyViewModel,
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToBooking = { navController.navigate(Screen.Booking.route) }
             )
         }
         composable(route = Screen.MyChildren.route) {
@@ -108,6 +110,11 @@ fun SetupNavGraph(navController: NavHostController) {
         composable(route = Screen.Vaccination.route) {
             VaccinationScreen(
                 viewModel = babyViewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+        composable(route = Screen.GeneralVaccines.route) {
+            GeneralVaccinesScreen(
                 onNavigateBack = { navController.popBackStack() }
             )
         }
@@ -125,7 +132,21 @@ fun SetupNavGraph(navController: NavHostController) {
         composable(route = Screen.Profile.route) {
             ProfileScreen(
                 viewModel = babyViewModel,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onLogout = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(Screen.Home.route) { inclusive = true }
+                    }
+                },
+                onNavigateToChildren = {
+                    navController.navigate(Screen.MyChildren.route)
+                },
+                onNavigateToAppointments = {
+                    navController.navigate(Screen.UpcomingVaccines.route)
+                },
+                onNavigateToVaccinations = {
+                    navController.navigate(Screen.Vaccination.route)
+                }
             )
         }
         composable(route = Screen.Booking.route) {

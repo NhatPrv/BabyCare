@@ -30,6 +30,14 @@ fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onNavigateToRegister: () -> Unit
 ) {
+    val authToken by viewModel.authToken.collectAsState()
+
+    LaunchedEffect(authToken) {
+        if (!authToken.isNullOrBlank()) {
+            onLoginSuccess()
+        }
+    }
+
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }

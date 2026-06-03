@@ -16,7 +16,8 @@ import retrofit2.http.DELETE
 @Serializable
 data class VaccinationRequest(
     val babyName: String,
-    val vaccineId: Int
+    val vaccineId: Int,
+    val status: String? = null
 )
 
 @Serializable
@@ -117,6 +118,15 @@ data class ChildMeasurementDto(
 )
 
 @Serializable
+data class ChildMeasurementCreateRequest(
+    @SerialName("measuredAt") val measuredAt: String,
+    val weight: Double? = null,
+    val height: Double? = null,
+    @SerialName("headCircumference") val headCircumference: Double? = null,
+    val note: String? = null
+)
+
+@Serializable
 data class GrowthAssessmentRecordDto(
     val id: String,
     @SerialName("childId") val childId: String? = null,
@@ -135,10 +145,33 @@ data class GrowthAssessmentRecordDto(
 )
 
 @Serializable
+data class ParentStatsResponse(
+    @SerialName("childrenCount") val childrenCount: Int,
+    @SerialName("appointmentsCount") val appointmentsCount: Int,
+    @SerialName("completedVaccinationsCount") val completedVaccinationsCount: Int
+)
+
+@Serializable
 data class ChildProfileResponse(
     val child: Baby,
     @SerialName("latestAssessment") val latestAssessment: GrowthAssessmentRecordDto? = null,
     @SerialName("measurementHistory") val measurementHistory: List<ChildMeasurementDto> = emptyList()
+)
+
+@Serializable
+data class ParentProfileDto(
+    val id: String = "",
+    val username: String = "",
+    val fullName: String = "",
+    val phone: String = "",
+    val email: String = "",
+    val address: String = ""
+)
+
+@Serializable
+data class UpdateParentProfileRequest(
+    val fullName: String,
+    val phone: String
 )
 
 interface ApiService {
@@ -194,6 +227,13 @@ interface ApiService {
         @Body appointment: Appointment
     )
 
+    @POST("appointments/{id}/cancel")
+    suspend fun cancelAppointment(
+        @Header("Authorization") authorization: String,
+        @Path("id") id: String
+    )
+
+
     @GET("vaccinations/{babyName}")
     suspend fun getVaccinations(
         @Header("Authorization") authorization: String,
@@ -248,4 +288,27 @@ interface ApiService {
         @Header("Authorization") authorization: String,
         @Body request: GrowthAssessmentRequest
     ): GrowthAssessmentResponse
+
+    @POST("children/{childId}/measurements")
+    suspend fun createChildMeasurement(
+        @Header("Authorization") authorization: String,
+        @Path("childId") childId: String,
+        @Body request: ChildMeasurementCreateRequest
+    ) : ChildMeasurementDto
+
+    @GET("parent/stats")
+    suspend fun getParentStats(
+        @Header("Authorization") authorization: String
+    ): ParentStatsResponse
+
+    @GET("parent/profile")
+    suspend fun getParentProfile(
+        @Header("Authorization") authorization: String
+    ): ParentProfileDto
+
+    @PUT("parent/profile")
+    suspend fun updateParentProfile(
+        @Header("Authorization") authorization: String,
+        @Body request: UpdateParentProfileRequest
+    ): ParentProfileDto
 }

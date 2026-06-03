@@ -3,6 +3,7 @@ package com.example.babycare.ui.screens
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,6 +22,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -151,17 +154,6 @@ fun MyChildrenScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
-                actions = {
-                    IconButton(
-                        onClick = onAddChild,
-                        modifier = Modifier
-                            .padding(end = 8.dp)
-                            .background(SecondaryBlue, CircleShape)
-                            .size(36.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Add", tint = PrimaryBlue, modifier = Modifier.size(20.dp))
-                    }
-                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.White)
             )
         }
@@ -189,16 +181,22 @@ fun MyChildrenScreen(
                     )
                 }
                 item {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        modifier = Modifier
+                            .size(60.dp)
+                            .border(1.dp, Color(0xFFE2E8F0), CircleShape)
+                            .clickable(onClick = onAddChild),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Box(
                             modifier = Modifier
-                                .size(60.dp)
-                                .border(1.dp, Color(0xFFE2E8F0), CircleShape),
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(SecondaryBlue),
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = null, tint = TextSecondary)
+                            Icon(Icons.Default.Add, contentDescription = null, tint = PrimaryBlue)
                         }
-                        Text("Thêm bé", fontSize = 12.sp, color = TextSecondary, modifier = Modifier.padding(top = 8.dp))
                     }
                 }
             }
@@ -252,95 +250,13 @@ fun MyChildrenScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                GrowthHistoryCard(
-                    title = "Biểu đồ cân nặng",
-                    subtitle = "Theo dõi các lần nhập thông tin gần nhất của bé",
-                    history = measurementHistory,
-                    seriesSelector = { it.weight },
-                    lineColor = PrimaryBlue
+                ClassificationHistoryCard(
+                    title = "Lịch sử thể trạng",
+                    subtitle = "Mỗi cột thể hiện phân loại thể trạng tại lần cập nhật",
+                    history = measurementHistory
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                GrowthHistoryCard(
-                    title = "Biểu đồ chiều cao",
-                    subtitle = "Biến động chiều cao theo từng lần cập nhật",
-                    history = measurementHistory,
-                    seriesSelector = { it.height },
-                    lineColor = SuccessGreen
-                )
-
-                Spacer(modifier = Modifier.height(28.dp))
-
-                if (isEditing) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = {
-                                isEditing = false
-                                draftName = currentChild.name
-                                draftDob = currentChild.dob
-                                draftWeight = currentChild.weight.takeIf { it > 0 }?.toString() ?: ""
-                                draftHeight = currentChild.height.takeIf { it > 0 }?.toString() ?: ""
-                                draftGender = currentChild.gender.ifBlank { "Nam" }
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryBlue)
-                        ) {
-                            Text("Hủy")
-                        }
-                        Button(
-                            onClick = { showConfirmDialog = true },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
-                        ) {
-                            Text("Cập nhật")
-                        }
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        OutlinedButton(
-                            onClick = onNavigateToHome,
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryBlue)
-                        ) {
-                            Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Đặt lịch")
-                        }
-                        Button(
-                            onClick = {
-                                isEditing = true
-                                draftName = currentChild.name
-                                draftDob = currentChild.dob
-                                draftWeight = currentChild.weight.takeIf { it > 0 }?.toString() ?: ""
-                                draftHeight = currentChild.height.takeIf { it > 0 }?.toString() ?: ""
-                                draftGender = currentChild.gender.ifBlank { "Nam" }
-                            },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(18.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
-                        ) {
-                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Chỉnh sửa thông tin")
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(32.dp))
+                
             }
         }
     }
@@ -490,25 +406,26 @@ private fun SelectedChildDashboard(
             if (!isEditing) {
                 Spacer(modifier = Modifier.height(18.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-                    Button(
+                    OutlinedButton(
                         onClick = onBook,
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(18.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue)
+                        border = BorderStroke(1.dp, PrimaryBlue),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryBlue, containerColor = Color.White)
                     ) {
-                        Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(18.dp), tint = PrimaryBlue)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Đặt lịch")
+                        Text("Đặt lịch", color = PrimaryBlue)
                     }
-                    OutlinedButton(
+                    Button(
                         onClick = onStartEdit,
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(18.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryBlue)
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue, contentColor = Color.White)
                     ) {
-                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Chỉnh sửa thông tin")
+                        Text("Chỉnh sửa", color = Color.White)
                     }
                 }
             } else {
@@ -517,6 +434,26 @@ private fun SelectedChildDashboard(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = PrimaryBlue)
                         Text("Đang lưu và đánh giá lại...", color = TextSecondary)
+                    }
+                } else {
+                    // khi đang edit: hiển thị nút Hủy / Cập nhật ngay trong card
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = onCancelEdit,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = PrimaryBlue)
+                        ) {
+                            Text("Hủy")
+                        }
+                        Button(
+                            onClick = onUpdate,
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = PrimaryBlue, contentColor = Color.White)
+                        ) {
+                            Text("Cập nhật", color = Color.White)
+                        }
                     }
                 }
             }
@@ -563,11 +500,9 @@ private fun AssessmentCard(
                 Spacer(modifier = Modifier.height(14.dp))
                 InfoGrid(
                     items = listOf(
-                        InfoChip("Phân loại", assessment.classification ?: "Chưa rõ"),
-                        InfoChip("BMI", assessment.bmi?.let { String.format("%.1f", it) } ?: "-"),
-                        InfoChip("Risk", assessment.riskLevel ?: "-"),
-                        InfoChip("Model", assessment.modelVersion ?: "-"),
-                    )
+                            InfoChip("Thể trạng", classificationToVietnamese(assessment.classification)),
+                            InfoChip("Rủi ro", riskToVietnamese(assessment.riskLevel)),
+                        )
                 )
                 assessment.recommendation?.takeIf { it.isNotBlank() }?.let {
                     Spacer(modifier = Modifier.height(12.dp))
@@ -577,6 +512,122 @@ private fun AssessmentCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ClassificationHistoryCard(
+    title: String,
+    subtitle: String,
+    history: List<ChildMeasurementDto>
+) {
+    var selected by remember { mutableStateOf<ChildMeasurementDto?>(null) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(title, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TextDark)
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(subtitle, color = TextSecondary, fontSize = 13.sp)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (history.isEmpty()) {
+                Text("Chưa có dữ liệu lịch sử.", color = TextSecondary)
+            } else {
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val availableWidth = maxWidth
+                    val spacing = 8.dp
+                    val columnWidth = (availableWidth - (spacing * 4)) / 5
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(spacing)
+                    ) {
+                        history.forEach { m ->
+                            val cls = m.assessment?.classification
+                            val color = classificationToColor(cls)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.width(columnWidth)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .height(80.dp)
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(color)
+                                        .clickable { selected = m }
+                                ) {}
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = m.measuredAtKey.ifBlank { m.measuredAt },
+                                    color = TextSecondary,
+                                    fontSize = 12.sp,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (selected != null) {
+        val m = selected!!
+        AlertDialog(
+            onDismissRequest = { selected = null },
+            title = { Text("Chi tiết cập nhật") },
+            text = {
+                Column {
+                    Text("Ngày: ${m.measuredAt}")
+                    Text("Cân nặng: ${m.weight?.let { String.format("%.1f kg", it) } ?: "-"}")
+                    Text("Chiều cao: ${m.height?.let { String.format("%.1f cm", it) } ?: "-"}")
+                    Text("Thể trạng: ${classificationToVietnamese(m.assessment?.classification)}")
+                    Text("Rủi ro: ${riskToVietnamese(m.assessment?.riskLevel)}")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { selected = null }) { Text("Đóng") }
+            }
+        )
+    }
+}
+
+private fun classificationToVietnamese(raw: String?): String {
+    return when (raw?.trim()?.lowercase()) {
+        "normal" -> "Sức khỏe tốt"
+        "overweight" -> "Nguy cơ thừa cân"
+        "obese" -> "Nguy cơ béo phì"
+        "thin" -> "Nguy cơ suy dinh dưỡng"
+        "severe_thin" -> "Nguy cơ suy dinh dưỡng nặng"
+        else -> "Chưa rõ"
+    }
+}
+
+private fun riskToVietnamese(raw: String?): String {
+    return when (raw?.trim()?.lowercase()) {
+        "low", "normal" -> "Thấp"
+        "medium" -> "Trung bình"
+        "high" -> "Cao"
+        else -> raw ?: "Chưa rõ"
+    }
+}
+
+private fun classificationToColor(raw: String?): Color {
+    return when (raw?.trim()?.lowercase()) {
+        "normal" -> SuccessGreen.copy(alpha = 0.9f)
+        "overweight", "obese" -> WarningOrange.copy(alpha = 0.9f)
+        "thin", "severe_thin" -> ErrorRed.copy(alpha = 0.9f)
+        else -> Color(0xFFF1F5F9)
     }
 }
 

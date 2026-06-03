@@ -1,6 +1,8 @@
 package com.example.babycare.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.Context
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.babycare.data.model.Appointment
 import com.example.babycare.data.model.Baby
@@ -14,6 +16,8 @@ import com.example.babycare.data.remote.ChildProfileResponse
 import com.example.babycare.data.remote.CreateChatSessionRequest
 import com.example.babycare.data.remote.GrowthAssessmentRequest
 import com.example.babycare.data.remote.GrowthAssessmentResponse
+import com.example.babycare.data.remote.ParentProfileDto
+import com.example.babycare.data.remote.UpdateParentProfileRequest
 import com.example.babycare.data.remote.RetrofitClient
 import com.example.babycare.data.remote.SendChatMessageRequest
 import com.example.babycare.data.remote.VaccinationRequest
@@ -28,12 +32,13 @@ import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.*
 
-class BabyViewModel : ViewModel() {
+class BabyViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = VaccineRepository()
     private val apiService = RetrofitClient.apiService
     private val TAG = "BabyViewModel"
     private val appDateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-    
+    private val sharedPrefs = application.getSharedPreferences("babycare_prefs", Context.MODE_PRIVATE)
+
     private val _babyState = MutableStateFlow<Baby?>(null)
     val babyState: StateFlow<Baby?> = _babyState.asStateFlow()
 
@@ -70,6 +75,12 @@ class BabyViewModel : ViewModel() {
     private val _chatSessions = MutableStateFlow<List<ChatSessionDto>>(emptyList())
     val chatSessions: StateFlow<List<ChatSessionDto>> = _chatSessions.asStateFlow()
 
+    private val _parentStats = MutableStateFlow<com.example.babycare.data.remote.ParentStatsResponse?>(null)
+    val parentStats: StateFlow<com.example.babycare.data.remote.ParentStatsResponse?> = _parentStats.asStateFlow()
+
+    private val _parentProfile = MutableStateFlow<ParentProfileDto?>(null)
+    val parentProfile: StateFlow<ParentProfileDto?> = _parentProfile.asStateFlow()
+
     private val _selectedChatSessionId = MutableStateFlow<String?>(null)
     val selectedChatSessionId: StateFlow<String?> = _selectedChatSessionId.asStateFlow()
 
@@ -79,6 +90,21 @@ class BabyViewModel : ViewModel() {
     private val _isChatLoading = MutableStateFlow(false)
     val isChatLoading: StateFlow<Boolean> = _isChatLoading.asStateFlow()
 
+    private val _initialVaccineFilter = MutableStateFlow<String>("Tất cả")
+    val initialVaccineFilter: StateFlow<String> = _initialVaccineFilter.asStateFlow()
+
+    fun setInitialVaccineFilter(filter: String) {
+        _initialVaccineFilter.value = filter
+    }
+
+    init {
+        val savedToken = sharedPrefs.getString("auth_token", null)
+        if (!savedToken.isNullOrBlank()) {
+            _authToken.value = savedToken
+            fetchDataFromServer()
+        }
+    }
+
     private fun authHeader(): String? = _authToken.value?.let { "Bearer $it" }
 
     fun fetchDataFromServer() {
@@ -87,6 +113,20 @@ class BabyViewModel : ViewModel() {
             _isLoading.value = true
             _error.value = null
             try {
+                try {
+                    val stats = apiService.getParentStats(authorization)
+                    _parentStats.value = stats
+                } catch (se: Exception) {
+                    Log.e(TAG, "Lỗi khi lấy thống kê phụ huynh: ${se.message}")
+                }
+
+                try {
+                    val profile = apiService.getParentProfile(authorization)
+                    _parentProfile.value = profile
+                } catch (pe: Exception) {
+                    Log.e(TAG, "Lỗi khi lấy hồ sơ phụ huynh: ${pe.message}")
+                }
+
                 val children = apiService.getChildren(authorization)
                 _childrenState.value = children
 
@@ -125,7 +165,6 @@ class BabyViewModel : ViewModel() {
 
     fun updateBabyInfo(baby: Baby, onSuccess: () -> Unit = {}) {
         val authorization = authHeader()
-        val isEdit = authorization != null && !_selectedChildId.value.isNullOrBlank()
         _isLoading.value = true
         viewModelScope.launch {
             try {
@@ -158,11 +197,6 @@ class BabyViewModel : ViewModel() {
                 _selectedChildId.value = saved.id
                 _babyState.value = saved
 
-                if (isEdit) {
-                    // Automatically run growth assessment whenever an existing child's info changes.
-                    assessGrowth(saved)
-                }
-
                 // Refresh other data (appointments, schedule) if authorized
                 if (authorization != null) fetchDataFromServer()
 
@@ -176,19 +210,38 @@ class BabyViewModel : ViewModel() {
         }
     }
 
-    fun addAppointment(appointment: Appointment) {
+    fun addAppointment(appointment: Appointment, onSuccess: (() -> Unit)? = null) {
         val authorization = authHeader() ?: return
         val newAppt = appointment.copy(id = UUID.randomUUID().toString())
+        _isLoading.value = true
+        _error.value = null
         viewModelScope.launch {
             try {
                 apiService.addAppointment(authorization, newAppt)
                 fetchDataFromServer()
+                onSuccess?.invoke()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _error.value = "Lỗi khi đặt lịch: ${e.message}"
+            } finally {
+                _isLoading.value = false
             }
         }
     }
+
+    fun cancelAppointment(appointmentId: String) {
+        val authorization = authHeader() ?: return
+        viewModelScope.launch {
+            try {
+                apiService.cancelAppointment(authorization, appointmentId)
+                fetchDataFromServer()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _error.value = "Lỗi khi hủy lịch hẹn: ${e.message}"
+            }
+        }
+    }
+
 
     fun login(
         username: String,
@@ -202,6 +255,7 @@ class BabyViewModel : ViewModel() {
                 val token = response.token
                 if (!token.isNullOrBlank()) {
                     _authToken.value = token
+                    sharedPrefs.edit().putString("auth_token", token).apply()
                     fetchDataFromServer()
                     onSuccess()
                 } else {
@@ -234,6 +288,7 @@ class BabyViewModel : ViewModel() {
                 if (response.success || !token.isNullOrBlank()) {
                     if (!token.isNullOrBlank()) {
                         _authToken.value = token
+                        sharedPrefs.edit().putString("auth_token", token).apply()
                         fetchDataFromServer()
                     }
                     onSuccess()
@@ -247,12 +302,53 @@ class BabyViewModel : ViewModel() {
         }
     }
 
-    fun markVaccinationAsCompleted(vaccineId: Int) {
+    fun logout() {
+        _authToken.value = null
+        sharedPrefs.edit().remove("auth_token").apply()
+        _parentStats.value = null
+        _parentProfile.value = null
+        _babyState.value = null
+        _childrenState.value = emptyList()
+        _selectedChildId.value = null
+        _childProfile.value = null
+        _growthAssessment.value = null
+        _appointments.value = emptyList()
+        _chatSessions.value = emptyList()
+        _chatMessages.value = emptyList()
+    }
+
+    fun updateParentProfile(
+        fullName: String,
+        phone: String,
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ) {
+        val authorization = authHeader() ?: return
+        viewModelScope.launch {
+            try {
+                val updated = apiService.updateParentProfile(
+                    authorization,
+                    UpdateParentProfileRequest(fullName = fullName.trim(), phone = phone.trim())
+                )
+                _parentProfile.value = updated
+                onSuccess()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                onError("Lỗi khi cập nhật thông tin: ${e.message}")
+            }
+        }
+    }
+
+    fun toggleVaccinationStatus(vaccineId: Int, isCompleted: Boolean) {
         val authorization = authHeader() ?: return
         val babyName = _babyState.value?.name ?: return
         viewModelScope.launch {
             try {
-                apiService.markVaccinationCompleted(authorization, VaccinationRequest(babyName, vaccineId))
+                val statusString = if (isCompleted) "completed" else "upcoming"
+                apiService.markVaccinationCompleted(
+                    authorization,
+                    VaccinationRequest(babyName, vaccineId, statusString)
+                )
                 fetchDataFromServer()
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
@@ -274,15 +370,50 @@ class BabyViewModel : ViewModel() {
                     _selectedChildId.value = null
                     _babyState.value = null
                     _childProfile.value = null
+                    _vaccineSchedule.value = emptyList()
                     return@launch
                 }
                 _selectedChildId.value = childId
                 val profile = apiService.getChildProfile(authorization, childId)
                 _babyState.value = profile.child
                 _childProfile.value = profile
+                
+                if (profile.child.name.isNotBlank()) {
+                    val completedVaccineIds = apiService.getVaccinations(authorization, profile.child.name)
+                    generateSchedule(profile.child.dob, completedVaccineIds)
+                } else {
+                    _vaccineSchedule.value = emptyList()
+                }
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
                 _error.value = "Không thể tải thông tin bé: ${e.message}"
+            }
+        }
+    }
+
+    fun saveMeasurement(childId: String, measuredAt: String, weight: Double?, height: Double?, headCircumference: Double? = null, note: String? = null, onSuccess: (() -> Unit)? = null) {
+        val authorization = authHeader() ?: return
+        viewModelScope.launch {
+            try {
+                _isLoading.value = true
+                val req = com.example.babycare.data.remote.ChildMeasurementCreateRequest(
+                    measuredAt = measuredAt,
+                    weight = weight,
+                    height = height,
+                    headCircumference = headCircumference,
+                    note = note
+                )
+                apiService.createChildMeasurement(authorization, childId, req)
+                // Refresh profile to include new history
+                val profile = apiService.getChildProfile(authorization, childId)
+                _babyState.value = profile.child
+                _childProfile.value = profile
+                onSuccess?.invoke()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _error.value = "Không thể lưu lịch sử đo: ${e.message}"
+            } finally {
+                _isLoading.value = false
             }
         }
     }
@@ -507,7 +638,6 @@ class BabyViewModel : ViewModel() {
 
     private fun generateAISuggestions(schedule: List<VaccineSchedule>) {
         val suggestions = mutableListOf<String>()
-        val overdueCount = schedule.count { it.status == VaccinationStatus.OVERDUE }
         val upcomingSoon = schedule.firstOrNull { it.status == VaccinationStatus.UPCOMING }
 
         // Removed loud overdue warning from AI suggestions to avoid occupying
