@@ -6,8 +6,8 @@ services:
     container_name: babycare-db
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: your_secure_db_password
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: babycare
     ports:
       - "5432:5432"
@@ -22,12 +22,11 @@ services:
     restart: always
     ports:
       - "4000:4000"
+    env_file:
+      - .env
     environment:
       - PORT=4000
-      - DATABASE_URL=postgres://postgres:your_secure_db_password@db:5432/babycare
-      - GEMINI_API_KEY=AIzaSyAcJS3FtLve7RWxTB9XM-PKZuDO0EBGxnQ
-      - GEMINI_MODEL=gemini-3.1-flash-lite
-      - JWT_SECRET=your_secure_jwt_secret_key
+      - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD}@db:5432/babycare
       - START_MODEL_SERVICE=1
       - MODEL_SERVICE_PORT=8001
       - PYTHON_BIN=/app/.venv/bin/python
